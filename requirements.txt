@@ -1,0 +1,5 @@
+pymongo
+pyrogram
+tgcrypto
+python-dotenv
+requests
