@@ -8,7 +8,7 @@ from pyrogram import Client, raw
 DB_STORAGE_FILE = "databases.json"
 TG_STORAGE_FILE = "telegrams.json"
 
-# Menggunakan API ID dan HASH default agar tidak perlu input manual
+# API ID dan HASH default
 API_ID = 38478620
 API_HASH = "b31e4e594d8ba8847d4084cdd6c18c66"
 
@@ -94,7 +94,7 @@ def mongo_menu():
             try:
                 idx = int(input("\nPilih nomor URL: ")) - 1
                 client = MongoClient(dbs[idx], serverSelectionTimeoutMS=5000)
-                client.admin.command('ping') # Tes koneksi
+                client.admin.command('ping') 
                 
                 db_names = [n for n in client.list_database_names() if n not in ['admin', 'local', 'config']]
                 print("\n--- Daftar Database ---")
@@ -125,7 +125,6 @@ def mongo_menu():
         elif pilihan == '4':
             break
 
-
 # ==========================================
 #        BAGIAN 2: MANAJER TELEGRAM
 # ==========================================
@@ -153,7 +152,6 @@ async def login_telegram():
         }
         
         accounts = load_data(TG_STORAGE_FILE)
-        # Cek apakah ID sudah ada di list
         if any(a.get("user_id") == me.id for a in accounts):
             print("Akun ini sudah ada di dalam daftar!")
         else:
@@ -178,31 +176,23 @@ async def manage_account(acc):
             print(f"Username : @{acc['username']}")
             print(f"Nomor HP : +{acc['phone']}")
             print("-" * 35)
-            print("1. Lihat 10 Pesan Terakhir dari Telegram (Kode OTP)")
+            print("1. Lihat Pesan OTP Terbaru (777000)")
             print("2. Lihat Sesi Aktif & Berhentikan Sesi Lain")
             print("3. Kembali")
             
             pilih = input("\nPilih menu: ")
             
             if pilih == '1':
-                print("\n--- 10 Pesan Terakhir dari Akun Resmi (777000) ---")
+                print("\n--- Pesan Terbaru dari Akun Resmi (777000) ---")
                 try:
-                    pesan_list = []
-                    # Ambil 10 pesan (Pyrogram mengambil dari yang terbaru)
-                    async for msg in app.get_chat_history(777000, limit=10):
-                        pesan_list.append(msg)
-                    
-                    if not pesan_list:
-                        print("Belum ada pesan dari 777000.")
+                    # Mengambil hanya 1 pesan (limit=1)
+                    async for msg in app.get_chat_history(777000, limit=1):
+                        tanggal = msg.date.strftime("%Y-%m-%d %H:%M:%S") if msg.date else "Waktu Tidak Diketahui"
+                        teks = msg.text or "Pesan bukan teks."
+                        print(f"[{tanggal}]\n{teks}\n{'-'*40}")
+                        break
                     else:
-                        # Balik urutan list agar pesan PALING BARU dicetak PALING BAWAH
-                        for msg in reversed(pesan_list):
-                            tanggal = msg.date.strftime("%Y-%m-%d %H:%M:%S") if msg.date else "Waktu Tidak Diketahui"
-                            teks = msg.text or "Pesan bukan teks."
-                            print(f"[{tanggal}]\n{teks}\n{'-'*40}")
-                            
-                        print(">>> (Pesan di atas adalah yang Paling Baru) <<<")
-                        
+                        print("Belum ada pesan dari 777000.")
                 except Exception as e:
                     print(f"Gagal mengambil pesan: {e}")
                 
@@ -217,7 +207,7 @@ async def manage_account(acc):
                         print(f"{i}. {s.device_model} | {s.platform} | {s.ip}{current}")
                     
                     print("\n0. Kembali")
-                    print("99. BERHENTIKAN SEMUA SESI LAIN (Kecuali sesi ini)")
+                    print("99. BERHENTIKAN SEMUA SESI LAIN")
                     
                     act = input("\nPilih aksi: ")
                     if act == '99':
@@ -234,8 +224,8 @@ async def manage_account(acc):
                 break
         await app.stop()
     except Exception as e:
-        print(f"❌ Error saat memuat akun: {e}")
-        input("Sesi mungkin sudah mati. Tekan Enter...")
+        print(f"❌ Error: {e}")
+        input("Tekan Enter...")
 
 def telegram_menu():
     while True:
@@ -263,31 +253,28 @@ def telegram_menu():
             
             print("\n0. Kembali")
             try:
-                sel = int(input("Pilih Akun untuk dikelola (atau ketik nomor untuk aksi lain): ")) - 1
+                sel = int(input("Pilih Akun: ")) - 1
                 if sel == -1: continue
                 
                 print(f"\nTerpilih: {accounts[sel]['name']}")
-                print("1. Masuk & Kelola Akun (OTP, Sesi, Info)")
-                print("2. Hapus Akun dari Daftar List")
+                print("1. Masuk & Kelola Akun")
+                print("2. Hapus Akun dari Daftar")
                 sub = input("Pilih aksi: ")
                 
                 if sub == '1':
                     asyncio.run(manage_account(accounts[sel]))
                 elif sub == '2':
-                    confirm = input("Hapus akun ini dari database lokal? (y/n): ")
+                    confirm = input("Hapus akun ini? (y/n): ")
                     if confirm == 'y':
                         accounts.pop(sel)
                         save_data(TG_STORAGE_FILE, accounts)
-                        print("✅ Akun berhasil dihapus.")
-                        input("Tekan Enter...")
+                        print("✅ Terhapus.")
+                        input("Enter...")
             except: pass
             
         elif pilih == '3':
             break
 
-# ==========================================
-#            MAIN RUNNER
-# ==========================================
 def main_menu():
     while True:
         os.system('clear' if os.name == 'posix' else 'cls')
@@ -303,11 +290,10 @@ def main_menu():
         elif pilih == '2':
             telegram_menu()
         elif pilih == '3':
-            print("Menutup program...")
             break
 
 if __name__ == "__main__":
     try:
         main_menu()
     except KeyboardInterrupt:
-        print("\nProgram dihentikan secara paksa.")
+        print("\nProgram dihentikan.")
