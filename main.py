@@ -14,9 +14,9 @@ API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
-# Inisialisasi Bot
-app = Client("mongo_manager_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 DB_STORAGE_FILE = "databases.json"
+app = None
+bot_loop = asyncio.new_event_loop()
 
 # --- FUNGSI HELPER DATA ---
 def load_db_list():
@@ -30,25 +30,12 @@ def save_db_list(data):
         json.dump(data, f, indent=4)
 
 def send_bot_log(msg):
-    """Mengirim log ke Telegram menggunakan loop yang sudah berjalan"""
-    try:
-        # Gunakan loop dari bot_thread
+    """Mengirim log ke Telegram secara aman antar thread"""
+    if app and app.is_connected:
         asyncio.run_coroutine_threadsafe(
             app.send_message(ADMIN_ID, f"🔔 **Update Database:**\n{msg}"),
             bot_loop
         )
-    except:
-        pass
-
-# --- HANDLER BOT TELEGRAM ---
-@app.on_message(filters.command("dblist") & filters.user(ADMIN_ID))
-async def list_db_handler(client, message):
-    dbs = load_db_list()
-    if not dbs:
-        await message.reply("Belum ada database tersimpan.")
-        return
-    res = "**Daftar Database Tersimpan:**\n\n" + "\n".join([f"• `{u}`" for u in dbs])
-    await message.reply(res)
 
 # --- CLI MENU ---
 def browse_collection(collection):
@@ -67,10 +54,8 @@ def browse_collection(collection):
         print("\n[N] Next | [P] Prev | [D] Delete | [B] Kembali")
         
         cmd = input(">> ").lower()
-        if cmd == 'n' and index < len(cursor) - 1:
-            index += 1
-        elif cmd == 'p' and index > 0:
-            index -= 1
+        if cmd == 'n' and index < len(cursor) - 1: index += 1
+        elif cmd == 'p' and index > 0: index -= 1
         elif cmd == 'd':
             confirm = input("Hapus data ini? (y/n): ")
             if confirm == 'y':
@@ -78,8 +63,7 @@ def browse_collection(collection):
                 cursor.pop(index)
                 if not cursor: break
                 if index >= len(cursor): index -= 1
-        elif cmd == 'b':
-            break
+        elif cmd == 'b': break
 
 def cli_menu():
     while True:
@@ -118,8 +102,7 @@ def cli_menu():
                 for i, n in enumerate(col_names, 1): print(f"{i}. {n}")
                 col_sel = db_sel[col_names[int(input("Pilih Kol: "))-1]]
                 browse_collection(col_sel)
-            except Exception as e: 
-                input(f"Error: {e}. Tekan Enter...")
+            except Exception as e: input(f"Error: {e}. Tekan Enter...")
         elif pilihan == '3':
             dbs = load_db_list()
             for i, url in enumerate(dbs, 1): print(f"{i}. {url[:60]}...")
@@ -131,23 +114,33 @@ def cli_menu():
                 print("Terhapus.")
             except: pass
             input("\nTekan Enter...")
-        elif pilihan == '4':
-            os._exit(0)
+        elif pilihan == '4': os._exit(0)
 
-# --- RUNNER LOGIC ---
-bot_loop = asyncio.new_event_loop()
+# --- BOT WORKER ---
+async def start_bot():
+    global app
+    app = Client("mongo_manager_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+    
+    @app.on_message(filters.command("dblist") & filters.user(ADMIN_ID))
+    async def list_db_handler(client, message):
+        dbs = load_db_list()
+        if not dbs:
+            await message.reply("Belum ada database tersimpan.")
+            return
+        res = "**Daftar Database Tersimpan:**\n\n" + "\n".join([f"• `{u}`" for u in dbs])
+        await message.reply(res)
+
+    await app.start()
+    # Gunakan Future agar loop tetap hidup tanpa blocking signal
+    await asyncio.Future() 
 
 def run_bot_worker(loop):
     asyncio.set_event_loop(loop)
-    # Start bot tanpa install signal handlers
-    loop.run_until_complete(app.start())
-    # Menjaga loop tetap berjalan untuk menghandle update Telegram
-    loop.run_forever()
+    loop.run_until_complete(start_bot())
 
 if __name__ == "__main__":
-    # Jalankan worker di thread terpisah
-    t = threading.Thread(target=run_bot_worker, args=(bot_loop,), daemon=True)
-    t.start()
+    # Jalankan bot di thread terpisah
+    threading.Thread(target=run_bot_worker, args=(bot_loop,), daemon=True).start()
     
     # Jalankan CLI di thread utama
     try:
