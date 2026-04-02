@@ -3,7 +3,7 @@ import os
 import threading
 import asyncio
 from pymongo import MongoClient
-from pyrogram import Client, filters, idle
+from pyrogram import Client, filters
 from dotenv import load_dotenv
 
 # Load konfigurasi dari .env
@@ -30,13 +30,13 @@ def save_db_list(data):
         json.dump(data, f, indent=4)
 
 def send_bot_log(msg):
-    """Mengirim pesan ke Telegram secara asinkron dari thread sinkron"""
+    """Mengirim log ke Telegram tanpa mengganggu loop utama"""
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(app.send_message(ADMIN_ID, f"🔔 **Update Database:**\n{msg}"))
         loop.close()
-    except Exception as e:
+    except:
         pass
 
 # --- HANDLER BOT TELEGRAM ---
@@ -49,7 +49,7 @@ async def list_db_handler(client, message):
     res = "**Daftar Database Tersimpan:**\n\n" + "\n".join([f"• `{u}`" for u in dbs])
     await message.reply(res)
 
-# --- FITUR DATABASE (CLI) ---
+# --- CLI MENU ---
 def browse_collection(collection):
     cursor = list(collection.find())
     if not cursor:
@@ -90,7 +90,6 @@ def cli_menu():
         print("4. Keluar")
         
         pilihan = input("Pilih menu: ")
-
         if pilihan == '1':
             url = input("Masukkan Mongo URL: ").strip()
             if url:
@@ -100,10 +99,8 @@ def cli_menu():
                     save_db_list(dbs)
                     send_bot_log(f"URL Baru ditambahkan:\n`{url}`")
                     print("Berhasil disimpan.")
-                else:
-                    print("URL sudah ada di list.")
+                else: print("URL sudah ada.")
             input("\nTekan Enter...")
-
         elif pilihan == '2':
             dbs = load_db_list()
             if not dbs:
@@ -111,39 +108,40 @@ def cli_menu():
                 continue
             for i, url in enumerate(dbs, 1): print(f"{i}. {url[:60]}...")
             try:
-                idx = int(input("Pilih nomor URL: ")) - 1
+                idx = int(input("Pilih nomor: ")) - 1
                 client = MongoClient(dbs[idx])
                 db_names = client.list_database_names()
                 for i, n in enumerate(db_names, 1): print(f"{i}. {n}")
                 db_sel = client[db_names[int(input("Pilih DB: "))-1]]
                 col_names = db_sel.list_collection_names()
                 for i, n in enumerate(col_names, 1): print(f"{i}. {n}")
-                col_sel = db_sel[col_names[int(input("Pilih Koleksi: "))-1]]
+                col_sel = db_sel[col_names[int(input("Pilih Kol: "))-1]]
                 browse_collection(col_sel)
-            except:
-                input("Terjadi kesalahan input/koneksi. Tekan Enter...")
-
+            except: input("Error. Tekan Enter...")
         elif pilihan == '3':
             dbs = load_db_list()
             for i, url in enumerate(dbs, 1): print(f"{i}. {url[:60]}...")
             try:
-                idx = int(input("Nomor yang dihapus: ")) - 1
+                idx = int(input("Hapus nomor: ")) - 1
                 removed = dbs.pop(idx)
                 save_db_list(dbs)
                 send_bot_log(f"URL Dihapus:\n`{removed}`")
-                print("Berhasil dihapus.")
+                print("Terhapus.")
             except: pass
             input("\nTekan Enter...")
-
         elif pilihan == '4':
-            print("Mematikan program...")
             os._exit(0)
 
-# --- RUNNER ---
+# --- FIX UNTUK RUNTIME ERROR (EVENT LOOP) ---
+def run_bot():
+    """Membuat loop baru khusus untuk thread bot"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    app.run()
+
 if __name__ == "__main__":
-    # Jalankan Bot di thread terpisah
-    bot_thread = threading.Thread(target=app.run, daemon=True)
-    bot_thread.start()
+    # Jalankan bot di thread terpisah dengan loop sendiri
+    threading.Thread(target=run_bot, daemon=True).start()
     
-    # Jalankan CLI di thread utama
+    # Jalankan menu utama
     cli_menu()
