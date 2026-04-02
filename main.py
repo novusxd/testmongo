@@ -1,22 +1,8 @@
 import json
 import os
-import threading
-import asyncio
 from pymongo import MongoClient
-from pyrogram import Client, filters
-from dotenv import load_dotenv
-
-# Load konfigurasi dari .env
-load_dotenv()
-
-API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
 DB_STORAGE_FILE = "databases.json"
-app = None
-bot_loop = asyncio.new_event_loop()
 
 # --- FUNGSI HELPER DATA ---
 def load_db_list():
@@ -29,20 +15,13 @@ def save_db_list(data):
     with open(DB_STORAGE_FILE, "w") as f: 
         json.dump(data, f, indent=4)
 
-def send_bot_log(msg):
-    """Mengirim log ke Telegram secara aman antar thread"""
-    if app and app.is_connected:
-        asyncio.run_coroutine_threadsafe(
-            app.send_message(ADMIN_ID, f"🔔 **Update Database:**\n{msg}"),
-            bot_loop
-        )
-
 # --- CLI MENU ---
 def browse_collection(collection):
+    # Mengambil semua data ke dalam list untuk navigasi Next/Prev
     cursor = list(collection.find())
     if not cursor:
         print("\n[!] Koleksi ini kosong.")
-        input("Tekan Enter...")
+        input("Tekan Enter untuk kembali...")
         return
 
     index = 0
@@ -54,27 +33,32 @@ def browse_collection(collection):
         print("\n[N] Next | [P] Prev | [D] Delete | [B] Kembali")
         
         cmd = input(">> ").lower()
-        if cmd == 'n' and index < len(cursor) - 1: index += 1
-        elif cmd == 'p' and index > 0: index -= 1
+        if cmd == 'n' and index < len(cursor) - 1:
+            index += 1
+        elif cmd == 'p' and index > 0:
+            index -= 1
         elif cmd == 'd':
-            confirm = input("Hapus data ini? (y/n): ")
+            confirm = input("Yakin hapus dokumen ini dari MongoDB? (y/n): ")
             if confirm == 'y':
                 collection.delete_one({"_id": doc["_id"]})
                 cursor.pop(index)
+                print("Terhapus!")
                 if not cursor: break
                 if index >= len(cursor): index -= 1
-        elif cmd == 'b': break
+        elif cmd == 'b':
+            break
 
 def cli_menu():
     while True:
         os.system('clear' if os.name == 'posix' else 'cls')
-        print("=== MONGO MANAGER (BOT ACTIVE) ===")
+        print("=== MONGO MANAGER (SIMPLE VERSION) ===")
         print("1. Masukkan Mongo URL Baru")
         print("2. Lihat Database Tersimpan")
         print("3. Hapus Database dari List")
         print("4. Keluar")
         
         pilihan = input("Pilih menu: ")
+
         if pilihan == '1':
             url = input("Masukkan Mongo URL: ").strip()
             if url:
@@ -82,68 +66,70 @@ def cli_menu():
                 if url not in dbs:
                     dbs.append(url)
                     save_db_list(dbs)
-                    send_bot_log(f"URL Baru ditambahkan:\n`{url}`")
-                    print("Berhasil disimpan.")
-                else: print("URL sudah ada.")
+                    print("URL Berhasil disimpan ke list.")
+                else:
+                    print("URL sudah ada di dalam list.")
             input("\nTekan Enter...")
+
         elif pilihan == '2':
             dbs = load_db_list()
             if not dbs:
-                input("List kosong. Tekan Enter...")
+                input("List kosong. Masukkan URL terlebih dahulu. (Enter)")
                 continue
-            for i, url in enumerate(dbs, 1): print(f"{i}. {url[:60]}...")
+            
+            print("\n--- Pilih Database URL ---")
+            for i, url in enumerate(dbs, 1):
+                print(f"{i}. {url[:70]}...")
+            
             try:
-                idx = int(input("Pilih nomor: ")) - 1
+                idx = int(input("\nPilih nomor URL: ")) - 1
+                if idx < 0 or idx >= len(dbs): raise ValueError
+                
                 client = MongoClient(dbs[idx], serverSelectionTimeoutMS=5000)
-                db_names = client.list_database_names()
+                # Tes koneksi
+                client.admin.command('ping')
+                
+                # Memilih Database
+                db_names = [n for n in client.list_database_names() if n not in ['admin', 'local', 'config']]
+                print("\n--- Daftar Database ---")
                 for i, n in enumerate(db_names, 1): print(f"{i}. {n}")
-                db_sel = client[db_names[int(input("Pilih DB: "))-1]]
+                db_sel = client[db_names[int(input("Pilih Nomor DB: "))-1]]
+                
+                # Memilih Koleksi
                 col_names = db_sel.list_collection_names()
+                print("\n--- Daftar Koleksi (Folder) ---")
                 for i, n in enumerate(col_names, 1): print(f"{i}. {n}")
-                col_sel = db_sel[col_names[int(input("Pilih Kol: "))-1]]
+                col_sel = db_sel[col_names[int(input("Pilih Nomor Koleksi: "))-1]]
+                
                 browse_collection(col_sel)
-            except Exception as e: input(f"Error: {e}. Tekan Enter...")
+            except Exception as e:
+                print(f"\n[!] Error: {e}")
+                input("Tekan Enter...")
+
         elif pilihan == '3':
             dbs = load_db_list()
-            for i, url in enumerate(dbs, 1): print(f"{i}. {url[:60]}...")
+            if not dbs:
+                input("List kosong. (Enter)")
+                continue
+                
+            for i, url in enumerate(dbs, 1):
+                print(f"{i}. {url[:70]}...")
+            
             try:
-                idx = int(input("Hapus nomor: ")) - 1
+                idx = int(input("\nNomor URL yang akan dihapus dari LIST: ")) - 1
                 removed = dbs.pop(idx)
                 save_db_list(dbs)
-                send_bot_log(f"URL Dihapus:\n`{removed}`")
-                print("Terhapus.")
-            except: pass
+                print(f"Berhasil menghapus URL dari list lokal.")
+            except:
+                print("Gagal menghapus.")
             input("\nTekan Enter...")
-        elif pilihan == '4': os._exit(0)
 
-# --- BOT WORKER ---
-async def start_bot():
-    global app
-    app = Client("mongo_manager_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-    
-    @app.on_message(filters.command("dblist") & filters.user(ADMIN_ID))
-    async def list_db_handler(client, message):
-        dbs = load_db_list()
-        if not dbs:
-            await message.reply("Belum ada database tersimpan.")
-            return
-        res = "**Daftar Database Tersimpan:**\n\n" + "\n".join([f"• `{u}`" for u in dbs])
-        await message.reply(res)
-
-    await app.start()
-    # Gunakan Future agar loop tetap hidup tanpa blocking signal
-    await asyncio.Future() 
-
-def run_bot_worker(loop):
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(start_bot())
+        elif pilihan == '4':
+            print("Keluar...")
+            break
 
 if __name__ == "__main__":
-    # Jalankan bot di thread terpisah
-    threading.Thread(target=run_bot_worker, args=(bot_loop,), daemon=True).start()
-    
-    # Jalankan CLI di thread utama
     try:
         cli_menu()
     except KeyboardInterrupt:
-        os._exit(0)
+        print("\nProgram dihentikan.")
