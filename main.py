@@ -30,12 +30,13 @@ def save_db_list(data):
         json.dump(data, f, indent=4)
 
 def send_bot_log(msg):
-    """Mengirim log ke Telegram tanpa mengganggu loop utama"""
+    """Mengirim log ke Telegram menggunakan loop yang sudah berjalan"""
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(app.send_message(ADMIN_ID, f"🔔 **Update Database:**\n{msg}"))
-        loop.close()
+        # Gunakan loop dari bot_thread
+        asyncio.run_coroutine_threadsafe(
+            app.send_message(ADMIN_ID, f"🔔 **Update Database:**\n{msg}"),
+            bot_loop
+        )
     except:
         pass
 
@@ -109,7 +110,7 @@ def cli_menu():
             for i, url in enumerate(dbs, 1): print(f"{i}. {url[:60]}...")
             try:
                 idx = int(input("Pilih nomor: ")) - 1
-                client = MongoClient(dbs[idx])
+                client = MongoClient(dbs[idx], serverSelectionTimeoutMS=5000)
                 db_names = client.list_database_names()
                 for i, n in enumerate(db_names, 1): print(f"{i}. {n}")
                 db_sel = client[db_names[int(input("Pilih DB: "))-1]]
@@ -117,7 +118,8 @@ def cli_menu():
                 for i, n in enumerate(col_names, 1): print(f"{i}. {n}")
                 col_sel = db_sel[col_names[int(input("Pilih Kol: "))-1]]
                 browse_collection(col_sel)
-            except: input("Error. Tekan Enter...")
+            except Exception as e: 
+                input(f"Error: {e}. Tekan Enter...")
         elif pilihan == '3':
             dbs = load_db_list()
             for i, url in enumerate(dbs, 1): print(f"{i}. {url[:60]}...")
@@ -132,16 +134,23 @@ def cli_menu():
         elif pilihan == '4':
             os._exit(0)
 
-# --- FIX UNTUK RUNTIME ERROR (EVENT LOOP) ---
-def run_bot():
-    """Membuat loop baru khusus untuk thread bot"""
-    loop = asyncio.new_event_loop()
+# --- RUNNER LOGIC ---
+bot_loop = asyncio.new_event_loop()
+
+def run_bot_worker(loop):
     asyncio.set_event_loop(loop)
-    app.run()
+    # Start bot tanpa install signal handlers
+    loop.run_until_complete(app.start())
+    # Menjaga loop tetap berjalan untuk menghandle update Telegram
+    loop.run_forever()
 
 if __name__ == "__main__":
-    # Jalankan bot di thread terpisah dengan loop sendiri
-    threading.Thread(target=run_bot, daemon=True).start()
+    # Jalankan worker di thread terpisah
+    t = threading.Thread(target=run_bot_worker, args=(bot_loop,), daemon=True)
+    t.start()
     
-    # Jalankan menu utama
-    cli_menu()
+    # Jalankan CLI di thread utama
+    try:
+        cli_menu()
+    except KeyboardInterrupt:
+        os._exit(0)
