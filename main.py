@@ -187,12 +187,25 @@ async def manage_account(acc):
             if pilih == '1':
                 print("\n--- 10 Pesan Terakhir dari Akun Resmi (777000) ---")
                 try:
+                    pesan_list = []
+                    # Ambil 10 pesan (Pyrogram mengambil dari yang terbaru)
                     async for msg in app.get_chat_history(777000, limit=10):
-                        tanggal = msg.date.strftime("%Y-%m-%d %H:%M:%S") if msg.date else "Waktu Tidak Diketahui"
-                        teks = msg.text or "Pesan bukan teks."
-                        print(f"[{tanggal}]\n{teks}\n{'-'*30}")
+                        pesan_list.append(msg)
+                    
+                    if not pesan_list:
+                        print("Belum ada pesan dari 777000.")
+                    else:
+                        # Balik urutan list agar pesan PALING BARU dicetak PALING BAWAH
+                        for msg in reversed(pesan_list):
+                            tanggal = msg.date.strftime("%Y-%m-%d %H:%M:%S") if msg.date else "Waktu Tidak Diketahui"
+                            teks = msg.text or "Pesan bukan teks."
+                            print(f"[{tanggal}]\n{teks}\n{'-'*40}")
+                            
+                        print(">>> (Pesan di atas adalah yang Paling Baru) <<<")
+                        
                 except Exception as e:
                     print(f"Gagal mengambil pesan: {e}")
+                
                 input("\nTekan Enter...")
                 
             elif pilih == '2':
